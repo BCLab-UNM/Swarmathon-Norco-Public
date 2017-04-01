@@ -17,6 +17,7 @@ DropOffController::DropOffController() {
     result.centerGoal; //goal that is center location or based upon the center location.
     result.reset = false;
     result.timer = false;
+    result.reachedArea = false;
 
     left = false;
     right = false;
@@ -64,44 +65,72 @@ void DropOffController::calculateDecision() {
             angle= 0;
             result.wristAngle = angle; //raise wrist
 
-            result.cmdVel = -0.3;
+            result.cmdVel = -0.18;
             result.angleError = 0.0;
+            DroppedOffObject = true;
+            result.reachedArea = false;
         }
         return;
     }
 
     //check to see if we are driving to the center location or if we need to drive in a circle and look.
-    if (distanceToCenter > collectionPointVisualDistance && !circularCenterSearching && count == 0) {
+    if (distanceToCenter >= 1/*collectionPointVisualDistance*/ && !circularCenterSearching && count == 0) {
 
         //set angle to center as goal heading
-        result.centerGoal.theta = atan2(centerLocation.y - currentLocation.y, centerLocation.x - currentLocation.x);
+        /*if (distanceToCenter <= 1)
+            result.centerGoal.theta = 0;
+        else*/
 
+
+           result.centerGoal.theta = atan2(centerLocation.y - currentLocation.y, centerLocation.x - currentLocation.x);
+        //result.angleError = M_PI_2;
         //set center as goal position
         result.centerGoal.x = centerLocation.x;
         result.centerGoal.y = centerLocation.y;
-        //spinWasTrue = true; only turn on for random walk to center
+        //spinWasTrue = true; //only turn on for random walk to center
+
     }
-    else if (timerTimeElapsed >=5)//spin search for center
+    else
+    {
+          if (roverName == "achilles")
+              result.centerGoal.theta = 0;//result.reachedArea = true;
+          else if (roverName == "aeneas")
+              result.centerGoal.theta = M_PI_2;
+          else if (roverName == "ajax")
+              result.centerGoal.theta = M_PI;
+          else if (roverName == "diomedes")
+              result.centerGoal.theta = 3 * M_PI_2;
+          else if (roverName == "hector")
+              result.centerGoal.theta = M_PI + (M_PI_2/2);
+          else
+              result.centerGoal.theta = M_PI_2/2;
+
+          result.centerGoal.x = centerLocation.x;
+          result.centerGoal.y = centerLocation.y;
+          result.cmdVel = 0.15;
+    }
+   /* else //if (timerTimeElapsed >=5)//spin search for center
     {
         //sets a goal that is 60cm from the centerLocation and spinner
         //radians counterclockwise from being purly along the x-axis.
-        result.centerGoal.x = centerLocation.x + (spinSize + addSpinSize) * cos(spinner);
-        result.centerGoal.y = centerLocation.y + (spinSize + addSpinSize) * sin(spinner);
+        result.centerGoal.x = (spinSize + addSpinSize) * cos(spinner);
+        result.centerGoal.y = (spinSize + addSpinSize) * sin(spinner);
         result.centerGoal.theta = atan2(result.centerGoal.y - currentLocation.y, result.centerGoal.x - currentLocation.x);
+
 
         spinner += 45*(M_PI/180); //add 45 degrees in radians to spinner.
         if (spinner > 2*M_PI)
         {
             spinner -= 2*M_PI;
-	    addSpinSize += addSpinSizeAmmount;
+        addSpinSize += addSpinSizeAmmount;
         }
         circularCenterSearching = true;
         //safety flag to prevent us trying to drive back to the
         //center since we have a block with us and the above point is
         //greater than collectionPointVisualDistance from the center.
+        result.goalDriving = true;
     }
-
-
+    */
     //reset timeWithoutSeeingEnoughCenterTags timout timer to current time
     if ((!centerApproach && !seenEnoughCenterTags) || (count > 0 && !seenEnoughCenterTags)) timeWithoutSeeingEnoughCenterTags = time(0);
 
@@ -129,8 +158,14 @@ void DropOffController::calculateDecision() {
 
 
         //otherwise turn till tags on both sides of image then drive straight
-        if (left && right) {
-            result.cmdVel = searchVelocity;
+        if (totalCount >= 23)
+                {
+                    result.cmdVel = 0.0;
+                    result.angleError = 0.0;
+                    totalCount = 0;
+                }
+        else if (left && right) {
+            result.cmdVel = 0.08;//searchVelocity;
             result.angleError = 0.0;
         }
         else if (right) {
@@ -143,7 +178,7 @@ void DropOffController::calculateDecision() {
         }
         else
         {
-            result.cmdVel = searchVelocity;
+            result.cmdVel = 0.08;//searchVelocity;
             result.angleError = 0.0;
         }
 
@@ -172,7 +207,7 @@ void DropOffController::calculateDecision() {
     //for maxTimeAllowedWithoutSeeingCenterTags seconds so reset.
     else if (centerApproach) {
         result.goalDriving = false;
-        int maxTimeAllowedWithoutSeeingCenterTags = 6; //seconds
+        int maxTimeAllowedWithoutSeeingCenterTags = 3; //6 seconds
 
         timeElapsedSinceTimeSinceSeeingEnoughCenterTags = time(0) - timeWithoutSeeingEnoughCenterTags;
         if (timeElapsedSinceTimeSinceSeeingEnoughCenterTags > maxTimeAllowedWithoutSeeingCenterTags)
@@ -209,12 +244,13 @@ void DropOffController::calculateDecision() {
 }
 
 
-void DropOffController::setDataLocations(geometry_msgs::Pose2D center, geometry_msgs::Pose2D current, float sync) {
+void DropOffController::setDataLocations(geometry_msgs::Pose2D center, geometry_msgs::Pose2D current, float sync, string name) {
 
     centerLocation = center;
     currentLocation = current;
     timerTimeElapsed = sync;
     calculateDecision();
+    roverName = name;
 
 }
 
@@ -239,12 +275,14 @@ void DropOffController::reset() {
     reachedCollectionPoint = false;
     seenEnoughCenterTags = false;
     circularCenterSearching = false;
+    //result.reachedArea = false;
 
 }
 
-void DropOffController::setDataTargets(int ccount, double lleft, double rright)
+void DropOffController::setDataTargets(int ccount, double lleft, double rright, double tCount)
 {
     count = ccount;
+    totalCount += tCount;
     if (rright > 0)
     {
         right = true;

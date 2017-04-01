@@ -53,6 +53,9 @@ geometry_msgs::Pose2D currentLocationMap;
 geometry_msgs::Pose2D currentLocationAverage;
 geometry_msgs::Pose2D goalLocation;
 
+//New function for multiple targets
+geometry_msgs::Pose2D ResourceLoc;
+
 geometry_msgs::Pose2D centerLocation;
 geometry_msgs::Pose2D centerLocationMap;
 geometry_msgs::Pose2D centerLocationOdom;
@@ -63,6 +66,7 @@ float status_publish_interval = 1;
 float killSwitchTimeout = 10;
 bool targetDetected = false;
 bool targetCollected = false;
+bool multiTargetsDetected = false;
 
 // Set true when the target block is less than targetDist so we continue
 // attempting to pick it up rather than switching to another block in view.
@@ -171,7 +175,7 @@ int main(int argc, char **argv) {
     rng = new random_numbers::RandomNumberGenerator();
 
     //set initial random heading
-    goalLocation.theta = rng->uniformReal(0, 2 * M_PI);
+    goalLocation.theta = M_PI_2;//rng->uniformReal(0, 2 * M_PI);
 
     //select initial search position 50 cm from center (0,0)
     goalLocation.x = 0.5 * cos(goalLocation.theta+M_PI);
@@ -307,7 +311,7 @@ void mobilityStateMachine(const ros::TimerEvent&) {
                 // calculate the euclidean distance between
                 // centerLocation and currentLocation
                 dropOffController.setCenterDist(hypot(centerLocation.x - currentLocation.x, centerLocation.y - currentLocation.y));
-                dropOffController.setDataLocations(centerLocation, currentLocation, timerTimeElapsed);
+                dropOffController.setDataLocations(centerLocation, currentLocation, timerTimeElapsed, publishedName);
 
                 DropOffResult result = dropOffController.getState();
 
@@ -357,6 +361,7 @@ void mobilityStateMachine(const ros::TimerEvent&) {
             }
             //If angle between current and goal is significant
             //if error in heading is greater than 0.4 radians
+	 
             else if (fabs(angles::shortest_angular_distance(currentLocation.theta, goalLocation.theta)) > rotateOnlyAngleTolerance) {
                 stateMachineState = STATE_MACHINE_ROTATE;
             }
@@ -366,12 +371,22 @@ void mobilityStateMachine(const ros::TimerEvent&) {
             }
             //Otherwise, drop off target and select new random uniform heading
             //If no targets have been detected, assign a new goal
+
             else if (!targetDetected && timerTimeElapsed > returnToSearchDelay) {
-                goalLocation = searchController.search(currentLocation);
+                if (multiTargetsDetected == true && dropOffController.getDropOffState() == true)
+				{
+                    //goalLocation = ResourceLoc;
+                    goalLocation.theta = atan2(ResourceLoc.y - currentLocation.y, ResourceLoc.x - currentLocation.x);
+                    goalLocation.x = currentLocation.x + (1.5*cos(goalLocation.theta));
+                    goalLocation.y = currentLocation.y + (1.5*sin(goalLocation.theta));
+                    dropOffController.setDropOffStateFalse();
+				}
+				else
+                    goalLocation = searchController.search(currentLocation);
             }
 
             //Purposefully fall through to next case without breaking
-        }
+
 
         // Calculate angle between currentLocation.theta and goalLocation.theta
         // Rotate left or right depending on sign of angle
@@ -380,7 +395,9 @@ void mobilityStateMachine(const ros::TimerEvent&) {
             stateMachineMsg.data = "ROTATING";
             // Calculate the diffrence between current and desired
             // heading in radians.
-            float errorYaw = angles::shortest_angular_distance(currentLocation.theta, goalLocation.theta);
+
+            float errorYaw = 0;
+            errorYaw = angles::shortest_angular_distance(currentLocation.theta, goalLocation.theta);
 
             // If angle > 0.4 radians rotate but dont drive forward.
             if (fabs(angles::shortest_angular_distance(currentLocation.theta, goalLocation.theta)) > rotateOnlyAngleTolerance) {
@@ -400,13 +417,14 @@ void mobilityStateMachine(const ros::TimerEvent&) {
         case STATE_MACHINE_SKID_STEER: {
             stateMachineMsg.data = "SKID_STEER";
 
+            float errorYaw = 0;
             // calculate the distance between current and desired heading in radians
-            float errorYaw = angles::shortest_angular_distance(currentLocation.theta, goalLocation.theta);
+            errorYaw = angles::shortest_angular_distance(currentLocation.theta, goalLocation.theta);
 
             // goal not yet reached drive while maintaining proper heading.
             if (fabs(angles::shortest_angular_distance(currentLocation.theta, atan2(goalLocation.y - currentLocation.y, goalLocation.x - currentLocation.x))) < M_PI_2) {
                 // drive and turn simultaniously
-                sendDriveCommand(searchVelocity, errorYaw/2);
+                sendDriveCommand(0.5, errorYaw/2);
             }
             // goal is reached but desired heading is still wrong turn only
             else if (fabs(angles::shortest_angular_distance(currentLocation.theta, goalLocation.theta)) > 0.1) {
@@ -432,6 +450,7 @@ void mobilityStateMachine(const ros::TimerEvent&) {
 
             // we see a block and have not picked one up yet
             if (targetDetected && !targetCollected) {
+                ResourceLoc = pickUpController.setResourceLocation(currentLocation, multiTargetsDetected);
                 result = pickUpController.pickUpSelectedTarget(blockBlock);
                 sendDriveCommand(result.cmdVel,result.angleError);
                 std_msgs::Float32 angle;
@@ -495,7 +514,7 @@ void mobilityStateMachine(const ros::TimerEvent&) {
 
         } /* end of switch() */
     }
-    // mode is NOT auto
+   } // mode is NOT auto
     else {
         // publish current state for the operator to see
         stateMachineMsg.data = "WAITING";
@@ -534,6 +553,7 @@ void targetHandler(const apriltags_ros::AprilTagDetectionArray::ConstPtr& messag
         double count = 0;
         double countRight = 0;
         double countLeft = 0;
+        double totalCount = 0;
 
         // this loop is to get the number of center tags
         for (int i = 0; i < message->detections.size(); i++) {
@@ -550,6 +570,7 @@ void targetHandler(const apriltags_ros::AprilTagDetectionArray::ConstPtr& messag
 
                 centerSeen = true;
                 count++;
+                totalCount++;
             }
         }
 
@@ -558,7 +579,7 @@ void targetHandler(const apriltags_ros::AprilTagDetectionArray::ConstPtr& messag
             goalLocation = currentLocation;
         }
 
-        dropOffController.setDataTargets(count,countLeft,countRight);
+        dropOffController.setDataTargets(count,countLeft,countRight, totalCount);
 
         // if we see the center and we dont have a target collected
         if (centerSeen && !targetCollected) {

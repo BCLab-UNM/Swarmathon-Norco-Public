@@ -3,6 +3,7 @@
 #define HEADERFILE_H
 #include <apriltags_ros/AprilTagDetectionArray.h>
 #include <ros/ros.h>
+#include <geometry_msgs/Pose2D.h>
 
 struct PickUpResult {
   float cmdVel;
@@ -28,6 +29,8 @@ class PickUpController
 
   void reset();
 
+  //new function for multiple target
+  geometry_msgs::Pose2D setResourceLocation(geometry_msgs::Pose2D currentLocation, bool &multiTargetsDetected);
 private:
   //set true when the target block is less than targetDist so we continue attempting to pick it up rather than
   //switching to another block that is in view
@@ -48,5 +51,8 @@ private:
   PickUpResult result;
 
   float td;
+
+  //new variable for multiple target
+  geometry_msgs::Pose2D ResourceLocation;
 };
 #endif // end header define

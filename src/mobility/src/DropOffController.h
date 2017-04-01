@@ -2,8 +2,10 @@
 #define DROPOFCONTROLLER_H
 #define HEADERFILE_H
 
+#include <string>
 #include <geometry_msgs/Pose2D.h>
 #include <std_msgs/Float32.h>
+using namespace std;
 
 struct DropOffResult {
     float cmdVel;
@@ -14,6 +16,8 @@ struct DropOffResult {
     geometry_msgs::Pose2D centerGoal;
     bool reset;
     bool timer;
+    bool reachedArea;
+
 };
 
 class DropOffController
@@ -24,14 +28,16 @@ public:
 
     void reset();
 
+    void setDropOffStateFalse() {DroppedOffObject = false;}
+    bool getDropOffState() {return DroppedOffObject;}
     DropOffResult getState() {return result;}
     float getSpinner() {return spinner;}
     float getCentX() { return centerLocation.x;}
     float getCount() { return count;}
 
-    void setDataTargets(int ccount, double lleft, double rright);
+    void setDataTargets(int ccount, double lleft, double rright, double tCount);
     void setCenterDist(float dist) {distanceToCenter = dist;}
-    void setDataLocations(geometry_msgs::Pose2D center, geometry_msgs::Pose2D current, float sync);
+    void setDataLocations(geometry_msgs::Pose2D center, geometry_msgs::Pose2D current, float sync, string name);
 
 private:
 
@@ -63,6 +69,7 @@ private:
     int prevCount;
     double countLeft;
     double countRight;
+    double totalCount;
     float collectionPointVisualDistance;
     float distanceToCenter;
     geometry_msgs::Pose2D centerLocation;
@@ -73,10 +80,12 @@ private:
     float spinSize;
     float addSpinSize;
     float addSpinSizeAmmount;
-
+    string roverName;
     float searchVelocity;
 
     void calculateDecision();
+
+    bool DroppedOffObject;
 
 
 };

@@ -69,7 +69,7 @@ PickUpResult PickUpController::pickUpSelectedTarget(bool blockBlock) {
     else if (!lockTarget) //if a target hasn't been locked lock it and enter a counting state while slowly driving forward.
     {
         lockTarget = true;
-        result.cmdVel = 0.18;
+        result.cmdVel = 0.22;//0.18;
         result.angleError = 0.0;
         timeOut = true;
     }
@@ -190,4 +190,16 @@ void PickUpController::reset() {
 }
 
 PickUpController::~PickUpController() {
+}
+
+geometry_msgs::Pose2D PickUpController::setResourceLocation(geometry_msgs::Pose2D currentLocation, bool &multiTargetsDetected)
+{
+    if(nTargetsSeen > 1 && nTargetsSeen < 6)
+    {
+		multiTargetsDetected = true;
+        ResourceLocation = currentLocation;
+        return ResourceLocation;
+    }
+
+
 }
